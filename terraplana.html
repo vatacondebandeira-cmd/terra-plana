@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>terra plana teste 4</title>
+<style>
+    *{box-sizing:border-box}
+    body{
+        margin:0;
+        background:#0b1020;
+        color:#fff;
+        font-family:Arial,sans-serif;
+        display:flex;
+        min-height:100vh;
+        overflow:hidden;
+    }
+    #painel{
+        width:290px;
+        padding:18px;
+        background:#121a2b;
+        border-right:1px solid #34405a;
+        overflow:auto;
+    }
+    h1{font-size:20px;margin:0 0 14px}
+    h2{font-size:15px;margin:18px 0 8px}
+    p{font-size:13px;line-height:1.45;margin:7px 0}
+    .valor{font-weight:bold}
+    button{
+        width:100%;
+        padding:9px;
+        margin:4px 0;
+        border:0;
+        border-radius:6px;
+        cursor:pointer;
+    }
+    input[type=range]{width:100%}
+    #area{flex:1;display:flex;align-items:center;justify-content:center}
+    canvas{background:#050914;display:block}
+    .legenda{font-size:12px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<div id="painel">
+    <h1>🌍 Modelo C1</h1>
+
+    <p><b>Polaris</b> = centro fixo</p>
+    <p><b>C1</b> = trajetória elíptica ao redor de Polaris</p>
+    <p><b>360° C1</b> = 24 horas</p>
+
+    <h2>Movimento</h2>
+    <button id="btnPlay">▶ Iniciar</button>
+    <button id="btnPausa">⏸ Pausar</button>
+    <button id="btnReset">↺ Reiniciar</button>
+
+    <p>Velocidade</p>
+    <input id="velocidade" type="range" min="1" max="2000" value="100">
+    <p><span id="velValor">100x</span></p>
+
+    <h2>Contagem</h2>
+    <p>Horas: <span id="horas" class="valor">0.00</span></p>
+    <p>Dias: <span id="dias" class="valor">0.000</span></p>
+    <p>Giro C1: <span id="giro" class="valor">0.00°</span></p>
+    <p>Ciclo lunar: <span id="cicloLua" class="valor">0.000</span></p>
+
+    <h2>Coordenadas da Terra</h2>
+    <div class="legenda">
+        +90° = Polaris / centro<br>
+        0° = Equador<br>
+        −90° = borda sul<br><br>
+        Longitude: 0° → 360°<br>
+        0° fica no topo<br>
+        +90° = leste<br>
+        +180° = sul<br>
+        +270° = oeste<br>
+        +360° = 0° novamente
+    </div>
+
+    <h2>Estrutura</h2>
+    <div class="legenda">
+        <div>🔵 6 constelações do norte</div>
+        <div>🔴 6 constelações do sul</div>
+        <div>🚪 3 portas no norte</div>
+        <div>🚪 3 portas no sul</div>
+        <div>🌊 C1 termina nas águas</div>
+        <div>🧊 Gelo fica além da C1</div>
+    </div>
+
+    <h2>Portas</h2>
+    <div class="legenda">
+        Norte: N1 Áries/Touro<br>
+        Norte: N2 Gêmeos/Câncer<br>
+        Norte: N3 Leão/Virgem<br><br>
+        Sul: S1 Libra/Escorpião<br>
+        Sul: S2 Sagitário/Capricórnio<br>
+        Sul: S3 Aquário/Peixes
+    </div>
+</div>
+
+<div id="area">
+    <canvas id="canvas"></canvas>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   CONFIGURAÇÃO
+   ============================================================ */
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const nomes = [
+    "Áries","Touro","Gêmeos","Câncer","Leão","Virgem",
+    "Libra","Escorpião","Sagitário","Capricórnio","Aquário","Peixes"
+];
+
+const TOTAL = 12;
+const DIAS_LUNARES = 29.53;
+
+/*
+   Distância entre Polaris e o início da C1.
+   A C1 continua terminando no mesmo ponto sul.
+*/
+const DISTANCIA_INICIO_C1 = 70;
+
+/*
+   A C1 começa exatamente em Polaris.
+
+   O parâmetro -90° = Polaris.
+   O parâmetro +90° = extremidade sul.
+
+   Portanto a C1 é uma elipse "em pé", com
+   uma ponta no centro e a outra nas águas.
+*/
+const parametros = [
+    -5*Math.PI/5.4,   // Áries
+    -2.3*Math.PI/3,   // Touro
+    -Math.PI/1.8,     // Gêmeos
+    -Math.PI/3,     // Câncer
+    -Math.PI/6,     // Leão
+    -Math.PI/17,    // Virgem
+
+     Math.PI/16,    // Libra
+     Math.PI/6,     // Escorpião
+     Math.PI/3,     // Sagitário
+     Math.PI/2,     // Capricórnio
+     2*Math.PI/2.6,   // Aquário
+     5.6*Math.PI/6    // Peixes
+];
+
+const estado = {
+    rodando:true,
+    dias:0,
+    ultima:performance.now(),
+    velocidade:100
+};
+
+/* ============================================================
+   TAMANHO
+   ============================================================ */
+
+function ajustarCanvas(){
+    const w = Math.max(1300, window.innerWidth - 290);
+    const h = Math.max(1100, window.innerHeight);
+
+    const tamanho = Math.min(w,h) * 0.90;
+
+    canvas.width = Math.floor(tamanho);
+    canvas.height = Math.floor(tamanho);
+}
+
+window.addEventListener("resize", ajustarCanvas);
+ajustarCanvas();
+
+/* ============================================================
+   GEOMETRIA
+   ============================================================ */
+
+function centro(){
+    return {
+        x:canvas.width/2,
+        y:canvas.height/2
+    };
+}
+
+function dimensoes(){
+    const c = centro();
+
+    /*
+       Terra = círculo/área central.
+       Águas = anel intermediário.
+       Gelo = borda externa.
+
+       C1 termina dentro das águas.
+    */
+
+    const terra = Math.min(canvas.width,canvas.height)*0.37;
+    const aguas = terra*1.10;
+    const gelo  = terra*1.15;
+
+    /*
+       C1:
+       a = largura lateral
+       b = distância Polaris -> extremo sul / 2
+
+       Como y = b + b*sin(t),
+       t=-90° dá y=0 (Polaris)
+       t=+90° dá y=2b (sul).
+    */
+
+    const b = aguas*0.34;
+    const a = aguas*0.57;
+
+    /*
+       Ajuste para criar um espaço entre Polaris e o início da C1.
+       O final sul permanece na mesma distância de antes.
+    */
+    const bC1 = b - DISTANCIA_INICIO_C1 / 2;
+    const centroC1 = DISTANCIA_INICIO_C1 + bC1;
+
+    return {terra,aguas,gelo,a,b,bC1,centroC1,c};
+}
+
+/* ponto da C1 antes da rotação */
+function pontoC1(parametro, giro){
+    const d = dimensoes();
+
+    const xLocal = d.a*Math.cos(parametro);
+    const yLocal = d.centroC1 + d.bC1*Math.sin(parametro);
+
+    const x =
+        xLocal*Math.cos(giro) -
+        yLocal*Math.sin(giro);
+
+    const y =
+        xLocal*Math.sin(giro) +
+        yLocal*Math.cos(giro);
+
+    return {
+        x:d.c.x+x,
+        y:d.c.y+y
+    };
+}
+
+/* ============================================================
+   MOVIMENTO
+   ============================================================ */
+
+function giroC1(){
+    /*
+       1 dia = 1 volta = 360°.
+    */
+    return (estado.dias % 1)*Math.PI*2;
+}
+
+function anguloLua(){
+    /*
+       Ângulo LOCAL da Lua na C1.
+       A rotação diária da C1 é aplicada separadamente
+       por pontoC1(parametro,giro).
+    */
+    return (estado.dias/DIAS_LUNARES)*Math.PI*2 - Math.PI/2;
+}
+
+function anguloSol(){
+    /*
+       Ângulo LOCAL do Sol na C1.
+       12 ciclos lunares = 1 volta solar.
+    */
+    return (estado.dias/(DIAS_LUNARES*12))*Math.PI*2 - Math.PI/2;
+}
+
+/* ============================================================
+   SOL E LUA
+   ============================================================ */
+
+function desenharObjetoNaC1(parametro,rotacao,raio,titulo,cor){
+    /*
+       parametro = posição LOCAL sobre a C1.
+       A rotação diária da C1 é aplicada por pontoC1().
+    */
+    const p = pontoC1(parametro,rotacao);
+
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,raio,0,Math.PI*2);
+    ctx.fillStyle=cor;
+    ctx.fill();
+
+    ctx.font="bold 13px Arial";
+    ctx.textAlign="center";
+    ctx.fillStyle="#fff";
+    ctx.fillText(titulo,p.x,p.y-raio-10);
+
+    return p;
+}
+
+function desenharSol(giro){
+    desenharObjetoNaC1(
+        anguloSol(),
+        giro,
+        11,
+        "SOL",
+        "#ffd83d"
+    );
+}
+
+function desenharLua(giro){
+    desenharObjetoNaC1(
+        anguloLua(),
+        giro,
+        9,
+        "LUA",
+        "#e7e7e7"
+    );
+}
+
+/* ============================================================
+   FUNDO
+   ============================================================ */
+
+function elipse(cx,cy,rx,ry){
+    ctx.beginPath();
+    ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
+}
+
+/* ============================================================
+   TERRA / ÁGUAS / GELO
+   ============================================================ */
+
+
+/* ============================================================
+   IMAGEM DA TERRA
+   ============================================================
+
+   A imagem fica FIXA no círculo da Terra.
+   Ela não usa o giro da C1.
+
+   Coloque terraplana.png na mesma pasta deste HTML.
+*/
+const imagemTerra = new Image();
+imagemTerra.src = "terraplana.png";
+
+imagemTerra.onload = function(){
+    desenhar();
+};
+
+imagemTerra.onerror = function(){
+    console.warn("Não foi possível carregar terraplana.png");
+};
+
+function desenharImagemTerra(){
+    const d = dimensoes();
+    const c = d.c;
+    const R = d.terra;
+
+    if(!imagemTerra.complete || !imagemTerra.naturalWidth) return;
+
+    ctx.save();
+
+    /* Máscara: a imagem só aparece dentro da Terra. */
+    ctx.beginPath();
+    ctx.arc(c.x,c.y,R,0,Math.PI*2);
+    ctx.clip();
+
+    /*
+       A imagem ocupa exatamente o diâmetro da Terra.
+       Não há rotação aqui: portanto ela permanece parada.
+    */
+    ctx.drawImage(
+        imagemTerra,
+        c.x - R,
+        c.y - R,
+        R * 2,
+        R * 2
+    );
+
+    ctx.restore();
+}
+
+function desenharRegioes(){
+    const d = dimensoes();
+    const c = d.c;
+
+    /*
+       GELO
+    */
+    elipse(c.x,c.y,d.gelo,d.gelo);
+    ctx.fillStyle="rgba(220,240,255,.07)";
+    ctx.fill();
+    ctx.strokeStyle="rgba(230,245,255,.8)";
+    ctx.lineWidth=4;
+    ctx.stroke();
+
+    /*
+       ÁGUAS
+    */
+    elipse(c.x,c.y,d.aguas,d.aguas);
+    ctx.fillStyle="rgba(30,120,200,.10)";
+    ctx.fill();
+    ctx.strokeStyle="rgba(60,180,240,.65)";
+    ctx.lineWidth=3;
+    ctx.stroke();
+
+    /*
+       TERRA
+    */
+    elipse(c.x,c.y,d.terra,d.terra);
+    ctx.fillStyle="rgba(60,140,70,.12)";
+    ctx.fill();
+    ctx.strokeStyle="rgba(120,220,130,.9)";
+    ctx.lineWidth=3;
+    ctx.stroke();
+
+    /*
+       Linha do meio:
+       é justamente a linha da parte Terra.
+    */
+    ctx.setLineDash([5,5]);
+    ctx.strokeStyle="rgba(255,255,255,.35)";
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font="bold 15px Arial";
+    ctx.textAlign="center";
+
+    ctx.fillStyle="#9be39b";
+    ctx.fillText("TERRA",c.x,c.y+40);
+
+    ctx.fillStyle="#72d9ff";
+    ctx.fillText("ÁGUAS",c.x,c.y+d.terra+35);
+
+    ctx.fillStyle="#eef7ff";
+    ctx.fillText("GELO",c.x,c.y+d.gelo+25);
+}
+
+/* ============================================================
+   SISTEMA DE COORDENADAS DA TERRA
+   ============================================================
+
+   Esta primeira versão serve para conferir a geometria
+   antes de colocarmos os países.
+
+   LATITUDE:
+      +90° = Polaris / centro
+       0°  = Equador
+      -90° = borda da Terra
+
+   LONGITUDE:
+       0°  = topo / meridiano inicial
+      +90° = direita / leste
+     +180° = sul
+     +270° = esquerda / oeste
+     +360° = volta ao 0°
+
+   Fórmula radial:
+      raio = R * (90 - latitude) / 180
+
+   Fórmula angular:
+      angulo = longitude * PI / 180
+
+   Assim, cada coordenada possui uma posição única
+   no círculo (exceto as longitudes no próprio Polaris,
+   onde todos os meridianos se encontram).
+*/
+
+function pontoCoordenada(latitude, longitude){
+    const d = dimensoes();
+
+    /*
+       O raio usa somente o círculo TERRA.
+       +90° fica exatamente no centro.
+       -90° chega exatamente na borda da Terra.
+    */
+    const raio = d.terra * (90 - latitude) / 180;
+
+    /*
+       0° fica para cima.
+       O sentido positivo cresce no sentido horário.
+    */
+    const angulo = longitude * Math.PI / 180;
+
+    return {
+        x: d.c.x + raio * Math.sin(angulo),
+        y: d.c.y - raio * Math.cos(angulo)
+    };
+}
+
+function desenharCoordenadas(){
+    const d = dimensoes();
+    const c = d.c;
+    const R = d.terra;
+
+    ctx.save();
+
+    /* ========================================================
+       CÍRCULO BASE DA TERRA
+       ======================================================== */
+    ctx.beginPath();
+    ctx.arc(c.x,c.y,R,0,Math.PI*2);
+    ctx.strokeStyle="rgba(255,255,255,.45)";
+    ctx.lineWidth=2;
+    ctx.stroke();
+
+    /* ========================================================
+       LATITUDES
+       Cada 10°: +80, +70 ... 0 ... -80.
+       -90° é a própria borda.
+       ======================================================== */
+    for(let latitude=80; latitude>=-80; latitude-=10){
+        const raio = R * (90-latitude)/180;
+
+        ctx.beginPath();
+        ctx.arc(c.x,c.y,raio,0,Math.PI*2);
+        ctx.strokeStyle = latitude===0
+            ? "rgba(255,70,70,.85)"
+            : "rgba(90,220,255,.22)";
+        ctx.lineWidth = latitude===0 ? 2.5 : 1;
+        ctx.stroke();
+    }
+
+    /* ========================================================
+       LATITUDES DE 1 EM 1 GRAU
+       Linhas muito suaves para conferir a matemática.
+       ======================================================== */
+    for(let latitude=89; latitude>=-89; latitude--){
+        if(latitude % 10 === 0) continue;
+
+        const raio = R * (90-latitude)/180;
+
+        ctx.beginPath();
+        ctx.arc(c.x,c.y,raio,0,Math.PI*2);
+        ctx.strokeStyle="rgba(90,220,255,.055)";
+        ctx.lineWidth=0.5;
+        ctx.stroke();
+    }
+
+    /* ========================================================
+       MERIDIANOS / LONGITUDES
+       360 linhas: 0°, +1°, +2° ... +359°.
+       +360° coincide geometricamente com 0°.
+       ======================================================== */
+    for(let longitude=0; longitude<360; longitude++){
+        const angulo=longitude*Math.PI/180;
+        const x=c.x + R*Math.sin(angulo);
+        const y=c.y - R*Math.cos(angulo);
+
+        ctx.beginPath();
+        ctx.moveTo(c.x,c.y);
+        ctx.lineTo(x,y);
+
+        if(longitude % 15 === 0){
+            ctx.strokeStyle="rgba(255,220,80,.55)";
+            ctx.lineWidth=1.15;
+        }else if(longitude % 5 === 0){
+            ctx.strokeStyle="rgba(120,230,255,.24)";
+            ctx.lineWidth=.8;
+        }else{
+            ctx.strokeStyle="rgba(120,230,255,.075)";
+            ctx.lineWidth=.45;
+        }
+        ctx.stroke();
+    }
+
+    /* ========================================================
+       MARCAÇÃO DO 0° / GREENWICH
+       ======================================================== */
+    const topo=pontoCoordenada(0,0);
+
+    ctx.beginPath();
+    ctx.moveTo(c.x,c.y);
+    ctx.lineTo(topo.x,topo.y);
+    ctx.strokeStyle="#ffffff";
+    ctx.lineWidth=2;
+    ctx.stroke();
+
+    /* ========================================================
+       RÓTULOS DAS LATITUDES
+       Colocados próximos ao meridiano 0°.
+       ======================================================== */
+    ctx.font="10px Arial";
+    ctx.textAlign="left";
+    ctx.textBaseline="middle";
+
+    for(let latitude=80; latitude>=-80; latitude-=10){
+        const p=pontoCoordenada(latitude,0);
+        const texto=(latitude>0?"+":"")+latitude+"°";
+
+        ctx.fillStyle = latitude===0 ? "#ff7777" : "#9defff";
+        ctx.fillText(texto,p.x+5,p.y);
+    }
+
+    /* ========================================================
+       LONGITUDES NUMERADAS
+       As 360 divisões existem fisicamente.
+       Para não transformar o desenho numa massa ilegível,
+       mostramos o número a cada 10° e mantemos todas as
+       divisões de 1° desenhadas.
+       ======================================================== */
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.font="bold 9px Arial";
+
+    for(let longitude=0; longitude<=360; longitude+=10){
+        const angulo=longitude*Math.PI/180;
+        const r=R+13;
+        const x=c.x+r*Math.sin(angulo);
+        const y=c.y-r*Math.cos(angulo);
+
+        ctx.fillStyle="#ffe45c";
+        ctx.fillText(longitude+"°",x,y);
+    }
+
+    /* ========================================================
+       PONTOS DE REFERÊNCIA
+       ======================================================== */
+    const referencias=[
+        {lat:90,lon:0,nome:"+90° POLARIS"},
+        {lat:0,lon:0,nome:"0° EQUADOR / 0° LONGITUDE"},
+        {lat:-90,lon:0,nome:"-90° BORDA SUL"}
+    ];
+
+    referencias.forEach(ref=>{
+        const p=pontoCoordenada(ref.lat,ref.lon);
+
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,4,0,Math.PI*2);
+        ctx.fillStyle="#fff";
+        ctx.fill();
+    });
+
+    /* Texto central de Polaris */
+    ctx.font="bold 11px Arial";
+    ctx.textAlign="center";
+    ctx.fillStyle="#fff";
+    ctx.fillText("+90° POLARIS",c.x,c.y+18);
+
+    /* Equador */
+    const equador=pontoCoordenada(0,0);
+    ctx.fillStyle="#ff7777";
+    ctx.fillText("LATITUDE 0° / EQUADOR",equador.x+82,equador.y-8);
+
+    /* Borda sul */
+    const sul=pontoCoordenada(-90,0);
+    ctx.fillStyle="#ffe45c";
+    ctx.fillText("LATITUDE -90°",sul.x,sul.y-14);
+
+    ctx.restore();
+}
+
+/* ============================================================
+   C1
+   ============================================================ */
+
+function desenharC1(giro){
+    const d = dimensoes();
+    const c = d.c;
+
+    ctx.save();
+
+    ctx.translate(c.x,c.y);
+    ctx.rotate(giro);
+
+    /*
+       A elipse agora começa afastada de Polaris.
+       O espaço é controlado por DISTANCIA_INICIO_C1.
+
+       Início: 40px depois de Polaris.
+       Final: permanece na mesma posição sul anterior.
+    */
+    ctx.beginPath();
+    ctx.ellipse(
+        0,d.centroC1,
+        d.a,d.bC1,
+        0,
+        0,Math.PI*2
+    );
+
+    ctx.strokeStyle="#ffe45c";
+    ctx.lineWidth=3;
+    ctx.setLineDash([10,6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.restore();
+
+    /*
+       Marca Polaris: começo da C1.
+    */
+    ctx.beginPath();
+    ctx.arc(c.x,c.y,8,0,Math.PI*2);
+    ctx.fillStyle="#fff";
+    ctx.fill();
+
+    ctx.font="bold 13px Arial";
+    ctx.textAlign="left";
+    ctx.fillStyle="#fff";
+    ctx.fillText("POLARIS",c.x+12,c.y-10);
+
+    /*
+       Marca o FINAL da C1.
+    */
+    const fim = pontoC1(Math.PI/2,giro);
+
+    ctx.beginPath();
+    ctx.arc(fim.x,fim.y,7,0,Math.PI*2);
+    ctx.fillStyle="#ffe45c";
+    ctx.fill();
+
+    ctx.font="bold 12px Arial";
+    ctx.textAlign="center";
+    ctx.fillStyle="#ffe45c";
+    ctx.fillText("FIM C1 / SUL",fim.x,fim.y+23);
+}
+
+/* ============================================================
+   PORTAS
+   ============================================================ */
+
+const portas = [
+    {nome:"N1",p:-5.6*Math.PI/6},
+    {nome:"N2",p:-Math.PI/1.8},
+    {nome:"N3",p:-Math.PI/6},
+    {nome:"S1",p: Math.PI/6},
+    {nome:"S2",p: Math.PI/2},
+    {nome:"S3",p: 5.6*Math.PI/6}
+];
+
+function desenharPortas(giro){
+    portas.forEach((porta,i)=>{
+        const p = pontoC1(porta.p,giro);
+
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,13,0,Math.PI*2);
+
+        ctx.strokeStyle =
+            i<3 ? "#75dcff" : "#ff9b9b";
+
+        ctx.lineWidth=2;
+        ctx.stroke();
+
+        ctx.font="bold 11px Arial";
+        ctx.textAlign="center";
+        ctx.textBaseline="middle";
+        ctx.fillStyle =
+            i<3 ? "#75dcff" : "#ff9b9b";
+
+        ctx.fillText(porta.nome,p.x,p.y);
+    });
+}
+
+/* ============================================================
+   CONSTELAÇÕES
+   ============================================================ */
+
+function desenharConstelacoes(giro){
+    nomes.forEach((nome,i)=>{
+        const p = pontoC1(parametros[i],giro);
+
+        const norte = i<6;
+        const cor = norte ? "#75dcff" : "#ff9b9b";
+
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,6,0,Math.PI*2);
+        ctx.fillStyle=cor;
+        ctx.fill();
+
+        /*
+           Nome deslocado para fora da C1.
+        */
+        const c=centro();
+        const dx=p.x-c.x;
+        const dy=p.y-c.y;
+        const dist=Math.hypot(dx,dy)||1;
+
+        ctx.font="bold 14px Arial";
+        ctx.textAlign="center";
+        ctx.textBaseline="middle";
+        ctx.fillStyle=cor;
+
+        ctx.fillText(
+            nome,
+            p.x+(dx/dist)*25,
+            p.y+(dy/dist)*25
+        );
+    });
+}
+
+/* ============================================================
+   DIA / NOITE + LUZ SOLAR
+   ============================================================
+
+   O lado voltado para o Sol fica claro.
+   O lado oposto recebe uma camada escura transparente,
+   mas continua mostrando estrelas e a Lua.
+*/
+
+/* Estrelas fixas: são geradas uma única vez para não piscarem. */
+const estrelasNoite = [];
+
+function prepararEstrelas(){
+    const d = dimensoes();
+
+    /* Mantemos uma quantidade moderada para não pesar o canvas. */
+    let seed = 1234567;
+
+    function aleatorio(){
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+    }
+
+    estrelasNoite.length = 0;
+
+    for(let i=0;i<180;i++){
+        const a = aleatorio() * Math.PI * 2;
+        const r = Math.sqrt(aleatorio()) * d.terra * 0.98;
+
+        estrelasNoite.push({
+            x:Math.cos(a)*r,
+            y:Math.sin(a)*r,
+            brilho:0.25 + aleatorio()*0.65,
+            tamanho:0.5 + aleatorio()*1.25
+        });
+    }
+}
+
+prepararEstrelas();
+
+function desenharNoite(giro){
+    const d = dimensoes();
+    const c = d.c;
+
+    /*
+       NOVA REGRA DO MODELO:
+
+       O dia é uma ÁREA CIRCULAR ao redor do Sol.
+       Portanto não usamos mais uma abertura de 90° ou 180°.
+
+       O Sol ilumina 360° EM VOLTA DELE.
+       O tamanho desse círculo corresponde ao alcance
+       de 3 constelações na C1.
+
+       Tudo que ficar fora desse círculo é noite.
+    */
+    const GRAUS_POR_CONSTELACAO = 360 / TOTAL;
+    const ALCANCE_CONSTELACOES = 3;
+    const ALCANCE_ANGULAR =
+        ALCANCE_CONSTELACOES * GRAUS_POR_CONSTELACAO * Math.PI / 180;
+
+    const parametroSol = anguloSol();
+    const pSol = pontoC1(parametroSol,giro);
+
+    /*
+       Para transformar as 3 constelações em um raio físico,
+       pegamos a posição da C1 três constelações adiante do Sol.
+       A distância entre os dois pontos define o alcance do dia.
+    */
+    const pAlcance = pontoC1(
+        parametroSol + ALCANCE_ANGULAR,
+        giro
+    );
+
+    const raioSolBase = Math.hypot(
+        pAlcance.x-pSol.x,
+        pAlcance.y-pSol.y
+    );
+
+    /* Redução de 20% no raio de alcance do Sol. */
+    const raioSol = raioSolBase * 0.78;
+
+    ctx.save();
+
+    /* A iluminação só aparece dentro da Terra. */
+    ctx.beginPath();
+    ctx.arc(c.x,c.y,d.terra,0,Math.PI*2);
+    ctx.clip();
+
+    /* Primeiro toda a Terra fica suavemente noturna. */
+    ctx.fillStyle="rgba(4,8,25,0.68)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    /*
+       Agora retiramos a noite dentro do círculo solar.
+       Observe que o círculo é de 360°: a luz sai para
+       TODOS os lados do Sol.
+    */
+    ctx.save();
+    ctx.globalCompositeOperation="destination-out";
+    ctx.beginPath();
+    ctx.arc(pSol.x,pSol.y,raioSol,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    /* Estrelas somente fora do alcance circular do Sol. */
+    estrelasNoite.forEach(estrela=>{
+        const x = c.x + estrela.x;
+        const y = c.y + estrela.y;
+        const distancia = Math.hypot(x-pSol.x,y-pSol.y);
+
+        if(distancia > raioSol){
+            ctx.beginPath();
+            ctx.arc(x,y,estrela.tamanho,0,Math.PI*2);
+            ctx.fillStyle=`rgba(255,255,255,${estrela.brilho})`;
+            ctx.fill();
+        }
+    });
+
+    ctx.restore();
+}
+
+function desenharLuzSolar(giro){
+    const d = dimensoes();
+    const c = d.c;
+
+    const parametroSol = anguloSol();
+    const pSol = pontoC1(parametroSol,giro);
+
+    /*
+       O alcance solar é circular.
+       A luz cobre 360° ao redor do Sol.
+
+       O tamanho do raio é definido por 3 constelações.
+    */
+    const GRAUS_POR_CONSTELACAO = 360 / TOTAL;
+    const ALCANCE_CONSTELACOES = 3;
+    const ALCANCE_ANGULAR =
+        ALCANCE_CONSTELACOES * GRAUS_POR_CONSTELACAO * Math.PI / 180;
+
+    const pAlcance = pontoC1(
+        parametroSol + ALCANCE_ANGULAR,
+        giro
+    );
+
+    const raioSolBase = Math.hypot(
+        pAlcance.x-pSol.x,
+        pAlcance.y-pSol.y
+    );
+
+    /* Redução de 20% no raio de alcance do Sol. */
+    const raioSol = raioSolBase * 0.80;
+
+    ctx.save();
+
+    /* A luz não sai para fora da Terra. */
+    ctx.beginPath();
+    ctx.arc(c.x,c.y,d.terra,0,Math.PI*2);
+    ctx.clip();
+
+    /*
+       Círculo de luz:
+       360° em torno do próprio Sol.
+    */
+    ctx.beginPath();
+    ctx.arc(pSol.x,pSol.y,raioSol,0,Math.PI*2);
+    ctx.closePath();
+
+    const grad = ctx.createRadialGradient(
+        pSol.x,pSol.y,0,
+        pSol.x,pSol.y,raioSol
+    );
+
+    grad.addColorStop(0,    "rgba(255,255,225,0.90)");
+grad.addColorStop(0.20, "rgba(255,245,170,0.70)");
+grad.addColorStop(0.50, "rgba(255,225,100,0.45)");
+grad.addColorStop(0.78, "rgba(255,205,70,0.25)");
+grad.addColorStop(1,    "rgba(255,190,40,0.05)");
+
+    ctx.fillStyle=grad;
+    ctx.fill();
+
+    /* Marca visualmente o raio de alcance do Sol. */
+    ctx.beginPath();
+    ctx.arc(pSol.x,pSol.y,raioSol,0,Math.PI*2);
+    ctx.strokeStyle="rgba(255,035,120,0.32)";
+    ctx.lineWidth=0.5;
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+/* ============================================================
+   NORTE / SUL
+   ============================================================ */
+
+function desenharNorteSul(giro){
+    const d=dimensoes();
+    const c=d.c;
+
+    ctx.save();
+    ctx.font="bold 18px Arial";
+    ctx.textAlign="center";
+
+    /* Rótulos fixos da estrutura do modelo. */
+    ctx.fillStyle="#75dcff";
+    ctx.fillText("NORTE",c.x,c.y-d.gelo+260);
+
+    ctx.fillStyle="#ff9b9b";
+    ctx.fillText("SUL",c.x,c.y+d.gelo+45);
+
+    ctx.fillStyle="#eef7ff";
+    ctx.font="bold 14px Arial";
+    ctx.fillText("gelo",c.x,c.y-d.gelo-18);
+
+    ctx.restore();
+}
+
+/* ============================================================
+   DESENHO
+   ============================================================ */
+
+function desenhar(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    const giro=giroC1();
+
+    desenharRegioes();
+
+    /*
+       A imagem é desenhada ANTES das coordenadas.
+       Assim o mapa fica parado e as coordenadas ficam
+       como uma camada por cima dele.
+    */
+    desenharImagemTerra();
+
+    /* Primeiro criamos noite e dia sobre o mapa. */
+    desenharNoite(giro);
+    desenharLuzSolar(giro);
+
+    /* Depois colocamos as coordenadas e os objetos por cima. */
+    desenharCoordenadas();
+    desenharC1(giro);
+    desenharPortas(giro);
+    desenharConstelacoes(giro);
+    desenharSol(giro);
+    desenharLua(giro);
+    desenharNorteSul(giro);
+
+    atualizarPainel();
+}
+
+/* ============================================================
+   PAINEL
+   ============================================================ */
+
+function atualizarPainel(){
+    const graus=(giroC1()*180/Math.PI);
+
+    document.getElementById("horas").textContent =
+        (estado.dias*24).toFixed(2);
+
+    document.getElementById("dias").textContent =
+        estado.dias.toFixed(3);
+
+    document.getElementById("giro").textContent =
+        graus.toFixed(2)+"°";
+
+    document.getElementById("cicloLua").textContent =
+        (estado.dias/DIAS_LUNARES).toFixed(3);
+}
+
+/* ============================================================
+   CONTROLES
+   ============================================================ */
+
+document.getElementById("btnPlay").onclick=()=>{
+    estado.rodando=true;
+    estado.ultima=performance.now();
+};
+
+document.getElementById("btnPausa").onclick=()=>{
+    estado.rodando=false;
+};
+
+document.getElementById("btnReset").onclick=()=>{
+    estado.dias=0;
+    estado.ultima=performance.now();
+};
+
+document.getElementById("velocidade").oninput=(e)=>{
+    estado.velocidade=Number(e.target.value);
+    document.getElementById("velValor").textContent =
+        estado.velocidade+"x";
+};
+
+/* ============================================================
+   LOOP
+   ============================================================ */
+
+function loop(agora){
+    const dt=(agora-estado.ultima)/1000;
+    estado.ultima=agora;
+
+    if(estado.rodando){
+        /*
+           Velocidade base:
+           1x = 1 hora simulada por segundo.
+
+           Assim 24 segundos = 1 giro de 360°.
+           A barra permite acelerar para enxergar
+           os ciclos lunares.
+        */
+        const horasPorSegundo=estado.velocidade;
+
+        estado.dias +=
+            (dt*horasPorSegundo)/24;
+    }
+
+    desenhar();
+    requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
