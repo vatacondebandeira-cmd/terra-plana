@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>terra plana teste 4</title>
+
+<title>terra plana </title>
 <style>
     *{box-sizing:border-box}
     body{
@@ -16,7 +17,7 @@
         overflow:hidden;
     }
     #painel{
-        width:290px;
+        width:190px;
         padding:18px;
         background:#121a2b;
         border-right:1px solid #34405a;
@@ -38,6 +39,21 @@
     #area{flex:1;display:flex;align-items:center;justify-content:center}
     canvas{background:#050914;display:block}
     .legenda{font-size:12px;line-height:1.6}
+    @media (max-width: 668px) {
+  /* Coloque aqui os estilos exclusivos para celular */
+  body {
+    font-size: 14px;
+    padding: 10px;
+    width: 900;
+    height: 600;
+  }
+  
+  #area {
+    width: 30%;
+    /*flex-direction: column;  Deixa os itens em coluna */
+  }
+}
+
 </style>
 </head>
 <body>
@@ -163,8 +179,8 @@ const estado = {
    ============================================================ */
 
 function ajustarCanvas(){
-    const w = Math.max(1300, window.innerWidth - 290);
-    const h = Math.max(1100, window.innerHeight);
+    const w = Math.max(350, window.innerWidth - 290);
+    const h = Math.max(350, window.innerHeight);
 
     const tamanho = Math.min(w,h) * 0.90;
 
