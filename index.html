@@ -7,53 +7,152 @@
 <title>terra plana </title>
 <style>
     *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0}
     body{
-        margin:0;
         background:#0b1020;
         color:#fff;
         font-family:Arial,sans-serif;
         display:flex;
+        width:100%;
+        height:100dvh;
         min-height:100vh;
         overflow:hidden;
     }
+
+    /* =========================================================
+       PAINEL LATERAL — PC
+       ========================================================= */
     #painel{
+        flex:0 0 190px;
         width:190px;
+        height:100%;
         padding:18px;
         background:#121a2b;
         border-right:1px solid #34405a;
-        overflow:auto;
+        overflow-y:auto;
+        overflow-x:hidden;
+        scrollbar-width:thin;
     }
+
     h1{font-size:20px;margin:0 0 14px}
     h2{font-size:15px;margin:18px 0 8px}
     p{font-size:13px;line-height:1.45;margin:7px 0}
     .valor{font-weight:bold}
+
     button{
         width:100%;
+        min-height:38px;
         padding:9px;
         margin:4px 0;
         border:0;
         border-radius:6px;
         cursor:pointer;
+        touch-action:manipulation;
     }
-    input[type=range]{width:100%}
-    #area{flex:1;display:flex;align-items:center;justify-content:center}
-    canvas{background:#050914;display:block}
-    .legenda{font-size:12px;line-height:1.6}
-    @media (max-width: 668px) {
-  /* Coloque aqui os estilos exclusivos para celular */
-  body {
-    font-size: 14px;
-    padding: 10px;
-    width: 900;
-    height: 600;
-  }
-  
-  #area {
-    width: 30%;
-    /*flex-direction: column;  Deixa os itens em coluna */
-  }
-}
 
+    input[type=range]{
+        width:100%;
+        min-height:30px;
+        cursor:pointer;
+        touch-action:manipulation;
+    }
+
+    /* Área onde o Canvas se adapta automaticamente */
+    #area{
+        flex:1 1 auto;
+        min-width:0;
+        min-height:0;
+        width:100%;
+        height:100%;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        overflow:hidden;
+        padding:10px;
+    }
+
+    canvas{
+        background:#050914;
+        display:block;
+        max-width:100%;
+        max-height:100%;
+        touch-action:none;
+    }
+
+    .legenda{font-size:12px;line-height:1.6}
+
+    /* Evita que uma regra antiga de largura fixa volte a aumentar a página */
+    .container{width:auto;max-width:100%}
+
+    /* =========================================================
+       CELULAR / TELAS PEQUENAS
+       ========================================================= */
+    @media (max-width:700px){
+        body{
+            flex-direction:column;
+            overflow:hidden;
+            height:100dvh;
+        }
+
+        #painel{
+            flex:0 0 auto;
+            width:100%;
+            height:auto;
+            max-height:42dvh;
+            padding:10px 12px;
+            border-right:0;
+            border-bottom:1px solid #34405a;
+            overflow-y:auto;
+        }
+
+        h1{
+            font-size:18px;
+            margin:0 0 8px;
+        }
+
+        h2{
+            font-size:14px;
+            margin:12px 0 6px;
+        }
+
+        p{
+            font-size:12px;
+            line-height:1.35;
+            margin:5px 0;
+        }
+
+        #painel .legenda{
+            font-size:11px;
+            line-height:1.45;
+        }
+
+        /* Os 3 botões ficam lado a lado para economizar espaço */
+        #btnPlay,#btnPausa,#btnReset{
+            width:32%;
+            display:inline-block;
+            vertical-align:top;
+            min-height:40px;
+            padding:8px 4px;
+            font-size:12px;
+        }
+
+        #area{
+            flex:1 1 auto;
+            width:100%;
+            min-height:0;
+            padding:4px;
+        }
+    }
+
+    /* Celulares muito pequenos */
+    @media (max-width:400px){
+        #painel{max-height:46dvh;padding:8px}
+        h1{font-size:16px}
+        h2{font-size:13px}
+        p{font-size:11px}
+        #painel .legenda{font-size:10px}
+        #btnPlay,#btnPausa,#btnReset{font-size:11px}
+    }
 </style>
 </head>
 <body>
@@ -179,17 +278,27 @@ const estado = {
    ============================================================ */
 
 function ajustarCanvas(){
-    const w = Math.max(350, window.innerWidth - 290);
-    const h = Math.max(350, window.innerHeight);
+    /* Usa somente o espaço realmente disponível para o Canvas. */
+    const area = document.getElementById("area");
+    const largura = area.clientWidth;
+    const altura = area.clientHeight;
 
-    const tamanho = Math.min(w,h) * 0.90;
+    if(largura <= 0 || altura <= 0) return;
 
-    canvas.width = Math.floor(tamanho);
-    canvas.height = Math.floor(tamanho);
+    /* 96% deixa uma pequena margem nas bordas. */
+    const tamanho = Math.floor(Math.min(largura, altura) * 0.96);
+
+    canvas.width = Math.max(1, tamanho);
+    canvas.height = Math.max(1, tamanho);
 }
 
 window.addEventListener("resize", ajustarCanvas);
-ajustarCanvas();
+window.addEventListener("orientationchange", () => {
+    setTimeout(ajustarCanvas, 100);
+});
+
+/* Espera o navegador calcular o layout antes do primeiro desenho. */
+requestAnimationFrame(ajustarCanvas);
 
 /* ============================================================
    GEOMETRIA
@@ -885,7 +994,7 @@ function desenharNoite(giro){
     );
 
     /* Redução de 20% no raio de alcance do Sol. */
-    const raioSol = raioSolBase * 0.78;
+    const raioSol = raioSolBase * 0.70;
 
     ctx.save();
 
